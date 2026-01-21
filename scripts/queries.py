@@ -4,7 +4,7 @@ import asyncio
 import os
 from datetime import datetime, timezone
 
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
@@ -16,7 +16,25 @@ def utc_day_key(now: datetime | None = None) -> str:
     return now.strftime("%Y-%m-%d")
 
 
-async def explain_active_session_for_user(db, user_id: str) -> dict:
+async def _explain_aggregate(
+    db: AsyncIOMotorDatabase,
+    *,
+    collection: str,
+    pipeline: list[dict],
+) -> dict:
+    """Use MongoDB's explain command with executionStats verbosity."""
+    cmd = {
+        "explain": {
+            "aggregate": collection,
+            "pipeline": pipeline,
+            "cursor": {},
+        },
+        "verbosity": "executionStats",
+    }
+    return await db.command(cmd)
+
+
+async def explain_active_session_for_user(db: AsyncIOMotorDatabase, user_id: str) -> dict:
     day = utc_day_key()
     pipeline = [
         {"$match": {"_id": user_id}},
@@ -45,10 +63,12 @@ async def explain_active_session_for_user(db, user_id: str) -> dict:
         },
         {"$project": {"_id": 1, "tier": 1, "active_session": 1}},
     ]
-    return await db.users.aggregate(pipeline).explain("executionStats")
+    return await _explain_aggregate(db, collection="users", pipeline=pipeline)
 
 
-async def explain_recent_messages_for_session(db, session_id: str, limit_n: int = 20) -> dict:
+async def explain_recent_messages_for_session(
+    db: AsyncIOMotorDatabase, session_id: str, limit_n: int = 20
+) -> dict:
     # Use sessions as the anchor to demonstrate $lookup for "context fetch".
     pipeline = [
         {"$match": {"_id": session_id}},
@@ -67,10 +87,10 @@ async def explain_recent_messages_for_session(db, session_id: str, limit_n: int 
         },
         {"$project": {"_id": 1, "user_id": 1, "day": 1, "recent_messages": 1}},
     ]
-    return await db.sessions.aggregate(pipeline).explain("executionStats")
+    return await _explain_aggregate(db, collection="sessions", pipeline=pipeline)
 
 
-async def explain_agg_by_tier_activity(db) -> dict:
+async def explain_agg_by_tier_activity(db: AsyncIOMotorDatabase) -> dict:
     # Example aggregation: sessions per tier for today.
     day = utc_day_key()
     pipeline = [
@@ -78,7 +98,7 @@ async def explain_agg_by_tier_activity(db) -> dict:
         {"$group": {"_id": "$tier", "sessions": {"$sum": 1}, "msgs": {"$sum": "$message_count"}}},
         {"$sort": {"sessions": -1}},
     ]
-    return await db.sessions.aggregate(pipeline).explain("executionStats")
+    return await _explain_aggregate(db, collection="sessions", pipeline=pipeline)
 
 
 async def main() -> None:
