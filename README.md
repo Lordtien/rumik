@@ -13,6 +13,17 @@ This repo is intentionally minimal at the start: it sets up **Poetry**, a **mult
 poetry install
 ```
 
+### Seed Mongo (local)
+
+By default, the seeder targets **1,000,000 docs per collection** (heavy).
+Start with a smaller run:
+
+```bash
+MONGO_URI="mongodb://localhost:27017" MONGO_DB="ira" \
+SEED_DROP_DB=true SEED_USERS=10000 SEED_SESSIONS=10000 SEED_MESSAGES=20000 \
+poetry run python scripts/seed_mongo.py
+```
+
 ### Run (local, single service)
 
 Router:
@@ -50,5 +61,6 @@ poetry run uvicorn services.seeder.app.main:app --host 0.0.0.0 --port 8004 --rel
 - `GET /healthz`
 - `GET /readyz`
 - `POST /chat` (stub)
+
 
 
