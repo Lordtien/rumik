@@ -1,18 +1,38 @@
 from __future__ import annotations
 
+import os
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
-from services.common.app_factory import create_app
 from services.common.logging import get_logger
-from services.common.request_context import (
-    RequestContext,
-    get_request_context,
-    set_request_context,
-)
+from services.common.http import install_request_context_middleware
+from services.common.request_context import RequestContext, get_request_context, set_request_context
+from services.router.app.pools import PoolManager, load_pool_configs_from_env
+from services.router.app.tier_router import Tier, TierRouter
 
 
-app = create_app(service="router")
 log = get_logger("router")
+
+pool_manager: PoolManager | None = None
+tier_router: TierRouter | None = None
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    global pool_manager, tier_router
+    # Router owns the pool manager + http client.
+    pool_manager = PoolManager(load_pool_configs_from_env())
+    await pool_manager.start_health_polling(interval_s=float(os.getenv("POOL_HEALTH_INTERVAL_S", "1.0")))
+    tier_router = TierRouter(pool_manager)
+    yield
+    if pool_manager is not None:
+        await pool_manager.aclose()
+
+
+app = FastAPI(title="ira-router", lifespan=lifespan)
+install_request_context_middleware(app, service="router")
 
 
 class ChatRequest(BaseModel):
@@ -37,11 +57,38 @@ async def chat(req: ChatRequest):
         )
     )
 
-    # Stub: Step 2 will route to worker pools based on tier/health/load.
-    log.info("chat_received", extra={"extra": {"user_id": req.user_id, "tier": req.tier}})
+    assert tier_router is not None and pool_manager is not None
+
+    payload = {"user_id": req.user_id, "message": req.message, "tier": req.tier}
+    decision, result = await tier_router.route_and_call(tier=req.tier, payload=payload)  # type: ignore[arg-type]
+
+    log.info(
+        "routed",
+        extra={
+            "extra": {
+                "user_id": req.user_id,
+                "tier": req.tier,
+                "action": decision.action,
+                "pool": decision.pool,
+                "reason": decision.reason,
+            }
+        },
+    )
+
+    if decision.action == "shed":
+        return {"reply": decision.user_message, "tier": req.tier, "degraded": True}
+
     return {
-        "reply": "Got it. (stubbed router response)",
+        "reply": (result or {}).get("reply", "OK"),
         "tier": req.tier,
+        "pool": decision.pool,
+        "degraded": False,
     }
+
+
+@app.get("/pools")
+async def pools():
+    assert pool_manager is not None
+    return pool_manager.snapshot()
 
 
