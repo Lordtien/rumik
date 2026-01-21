@@ -104,14 +104,15 @@ class PoolManager:
         st = self.state[pool]
 
         # Admission control with optional bounded waiting.
+        #
+        # Note: asyncio.Semaphore does not provide a stable acquire_nowait() API across versions.
+        # For "no wait" we check locked() and then acquire (which will not block if unlocked).
         if max_queue_wait_s > 0:
             await asyncio.wait_for(sem.acquire(), timeout=max_queue_wait_s)
         else:
             if sem.locked():
                 raise PoolOverloaded(pool)
-            acquired = sem.acquire_nowait()
-            if not acquired:
-                raise PoolOverloaded(pool)
+            await sem.acquire()
 
         st.inflight += 1
         start = time.perf_counter()

@@ -13,6 +13,26 @@ This repo is intentionally minimal at the start: it sets up **Poetry**, a **mult
 poetry install
 ```
 
+### Run with Docker Compose
+
+Bring everything up (Mongo + Redis + router + workers):
+
+```bash
+docker compose up --build
+```
+
+Seed a small dataset (one-shot service):
+
+```bash
+docker compose run --rm seeder
+```
+
+Run tests (executes pytest inside a container against the running router):
+
+```bash
+docker compose run --rm tests
+```
+
 ### Seed Mongo (local)
 
 By default, the seeder targets **1,000,000 docs per collection** (heavy).
@@ -61,6 +81,7 @@ poetry run uvicorn services.seeder.app.main:app --host 0.0.0.0 --port 8004 --rel
 - `GET /healthz`
 - `GET /readyz`
 - `POST /chat` (stub)
+  - returns `rate_limited`, `silent`, `blocked` flags when applicable
 
 
 

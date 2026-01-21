@@ -107,6 +107,9 @@ async def chat(req: ChatRequest, request: Request):
         "tier": req.tier,
         "pool": decision.pool,
         "degraded": False,
+        "rate_limited": bool((result or {}).get("rate_limited")),
+        "silent": bool((result or {}).get("silent")),
+        "blocked": bool((result or {}).get("blocked")),
     }
 
 

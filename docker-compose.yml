@@ -1,0 +1,129 @@
+services:
+  mongo:
+    image: mongo:8
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+  router:
+    build: .
+    command: >
+      uvicorn services.router.app.main:app
+      --host 0.0.0.0
+      --port 8000
+    environment:
+      LOG_LEVEL: INFO
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: ira
+      REDIS_URL: redis://redis:6379/0
+      PRIORITY_WORKER_URL: http://worker-priority:8001
+      STANDARD_WORKER_URL: http://worker-standard:8002
+      OVERFLOW_WORKER_URL: http://worker-overflow:8003
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mongo
+      - redis
+      - worker-priority
+      - worker-standard
+      - worker-overflow
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/pools"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  worker-priority:
+    build: .
+    command: >
+      uvicorn services.worker_priority.app.main:app
+      --host 0.0.0.0
+      --port 8001
+    environment:
+      LOG_LEVEL: INFO
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: ira
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - mongo
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8001/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  worker-standard:
+    build: .
+    command: >
+      uvicorn services.worker_standard.app.main:app
+      --host 0.0.0.0
+      --port 8002
+    environment:
+      LOG_LEVEL: INFO
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: ira
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - mongo
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8002/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  worker-overflow:
+    build: .
+    command: >
+      uvicorn services.worker_overflow.app.main:app
+      --host 0.0.0.0
+      --port 8003
+    environment:
+      LOG_LEVEL: INFO
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: ira
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - mongo
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8003/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  seeder:
+    build: .
+    command: python scripts/seed_mongo.py
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: ira
+      SEED_DROP_DB: "true"
+      # Default to a small seed for compose; increase as needed.
+      SEED_USERS: "10000"
+      SEED_SESSIONS: "10000"
+      SEED_MESSAGES: "20000"
+      SEED_BATCH_SIZE: "2000"
+      SEED_CONCURRENCY: "8"
+    depends_on:
+      - mongo
+
+  tests:
+    build: .
+    command: pytest -q
+    environment:
+      BASE_URL: http://router:8000
+    depends_on:
+      router:
+        condition: service_healthy
+
+volumes:
+  mongo_data:
+
