@@ -13,6 +13,7 @@ uvicorn = {version = "^0.34.0", extras = ["standard"]}
 motor = "^3.7.0"
 pymongo = "^4.14.1"
 httpx = "^0.28.1"
+redis = "^5.2.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"
