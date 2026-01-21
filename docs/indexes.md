@@ -31,8 +31,16 @@ Hot path: fetch recent N messages (N=20) for a session, newest-first.
 - Optional analytics:
   - `{ tier: 1, created_at: -1 }`
 
+### `analytics_events`
+
+- Recent events:
+  - `{ ts: -1 }`
+- Per-tier time series:
+  - `{ tier: 1, ts: -1 }`
+
 ### Why these help
 
 - Compound indexes match the **exact filter+sort patterns** of the hot path.
 - Denormalized `tier` fields on `sessions/messages` allow analytics without `$lookup`.
+- `analytics_events` is optimized for “latest events by tier” queries.
 

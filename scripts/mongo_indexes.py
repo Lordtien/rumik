@@ -37,6 +37,10 @@ async def main() -> None:
     )
     await db.messages.create_index([("tier", 1), ("created_at", -1)], name="tier_createdAt_desc")
 
+    # analytics_events
+    await db.analytics_events.create_index([("ts", -1)], name="ts_desc")
+    await db.analytics_events.create_index([("tier", 1), ("ts", -1)], name="tier_ts_desc")
+
     client.close()
 
 
