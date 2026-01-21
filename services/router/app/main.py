@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import os
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from pydantic import BaseModel, Field
 
 from services.common.logging import get_logger
+from services.common.analytics import start as analytics_start, stop as analytics_stop, track as analytics_track
 from services.common.http import install_request_context_middleware
 from services.common.request_context import RequestContext, get_request_context, set_request_context
 from services.router.app.pools import PoolManager, load_pool_configs_from_env
@@ -24,11 +26,13 @@ async def lifespan(_: FastAPI):
     global pool_manager, tier_router
     # Router owns the pool manager + http client.
     pool_manager = PoolManager(load_pool_configs_from_env())
+    await analytics_start()
     await pool_manager.start_health_polling(interval_s=float(os.getenv("POOL_HEALTH_INTERVAL_S", "1.0")))
     tier_router = TierRouter(pool_manager)
     yield
     if pool_manager is not None:
         await pool_manager.aclose()
+    await analytics_stop()
 
 
 app = FastAPI(title="ira-router", lifespan=lifespan)
@@ -42,7 +46,9 @@ class ChatRequest(BaseModel):
 
 
 @app.post("/chat")
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, request: Request):
+    started = time.perf_counter()
+
     # Update context with request-specific info (used by structured logs),
     # while preserving middleware-generated correlation ID.
     ctx = get_request_context()
@@ -73,6 +79,24 @@ async def chat(req: ChatRequest):
                 "reason": decision.reason,
             }
         },
+    )
+
+    elapsed_ms = (time.perf_counter() - started) * 1000.0
+
+    # Fire-and-forget analytics (non-blocking enqueue).
+    await analytics_track(
+        {
+            "ts": time.time(),
+            "correlation_id": correlation_id,
+            "user_id": req.user_id,
+            "tier": req.tier,
+            "pool": decision.pool,
+            "latency_ms": round(elapsed_ms, 2),
+            "rate_limited": bool((result or {}).get("rate_limited")),
+            "safety_blocked": bool((result or {}).get("blocked")),
+            "degraded": decision.action == "shed",
+            "path": str(request.url.path),
+        }
     )
 
     if decision.action == "shed":
