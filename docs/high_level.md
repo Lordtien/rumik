@@ -66,10 +66,10 @@ flowchart LR
   end
 
   subgraph Backend
-    R[Router\n(FastAPI)]
-    P[Priority Worker\n(enterprise)]
-    S[Standard Worker\n(premium)]
-    O[Overflow Worker\n(free)]
+    R["Router<br/>(FastAPI)"]
+    P["Priority Worker<br/>(enterprise)"]
+    S["Standard Worker<br/>(premium)"]
+    O["Overflow Worker<br/>(free)"]
   end
 
   subgraph Data
@@ -77,20 +77,20 @@ flowchart LR
     D[(Redis)]
   end
 
-  C -->|/chat| R
+  C -->|"/chat"| R
 
-  R -->|tier=enterprise\nHTTP /process| P
-  R -->|tier=premium\nHTTP /process| S
-  R -->|tier=free\nHTTP /process| O
+  R -->|"tier=enterprise<br/>HTTP /process"| P
+  R -->|"tier=premium<br/>HTTP /process"| S
+  R -->|"tier=free<br/>HTTP /process"| O
 
-  P -->|safety + rate-limit + LLM stub| M
-  S -->|safety + rate-limit + LLM stub| M
-  O -->|safety + rate-limit + LLM stub| M
+  P -->|"safety + rate-limit<br/>+ LLM stub"| M
+  S -->|"safety + rate-limit<br/>+ LLM stub"| M
+  O -->|"safety + rate-limit<br/>+ LLM stub"| M
 
-  P -->|rate limit| D
-  S -->|rate limit| D
-  O -->|rate limit| D
+  P -->|"rate limit"| D
+  S -->|"rate limit"| D
+  O -->|"rate limit"| D
 
-  R -->|analytics events| M
+  R -->|"analytics events"| M
 ```
 
